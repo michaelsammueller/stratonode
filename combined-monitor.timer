@@ -1,0 +1,16 @@
+[Unit]
+Description=UBX Parser Health Monitor Timer (runs every minute)
+Documentation=file:///home/strato/stratonode/sender/UBX_DESYNC_FIX.md
+PartOf=combined.service
+After=combined.service
+
+[Timer]
+# Run every minute
+OnBootSec=1min
+OnUnitActiveSec=1min
+
+# Run even if previous run hasn't completed
+AccuracySec=1s
+
+[Install]
+WantedBy=timers.target

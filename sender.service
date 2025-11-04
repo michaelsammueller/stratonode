@@ -1,0 +1,76 @@
+[Unit]
+Description=Ground Node Sender - GNSS Data Transmission Service
+Documentation=https://github.com/stratocentral/stratocentral
+After=network-online.target gnss-multiplexer.service
+Wants=network-online.target
+Requires=gnss-multiplexer.service
+BindsTo=gnss-multiplexer.service
+
+# Service dependencies
+# - network-online.target: Needs internet to send data to ingest server
+# - gnss-multiplexer.service: Needs virtual port /dev/ttyGPS_sender
+# - BindsTo: If multiplexer stops/restarts, this service also stops/restarts
+
+[Service]
+Type=simple
+User=root
+Group=root
+
+# Working directory - IMPORTANT: Update this path for your installation!
+# This directory must contain:
+#   - sender.py
+#   - .env configuration file
+#   - config.py
+#   - gnss_reader.py
+WorkingDirectory=/home/strato/stratonode/sender/
+
+# Command to run (using virtual environment Python)
+ExecStart=/home/strato/stratonode/venv/bin/python3 sender.py
+
+# Restart policy
+Restart=always
+RestartSec=10
+
+# If sender crashes/exits, wait 10 seconds before restarting
+# This gives time for multiplexer to stabilize if there was a port issue
+
+# Graceful shutdown
+KillMode=mixed
+KillSignal=SIGINT
+TimeoutStopSec=30
+
+# Give sender time to flush buffers and close connections gracefully
+
+# Logging
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=sender
+
+# Environment (optional - can override .env settings here if needed)
+# Environment="GNSS_DEVICE=/dev/ttyGPS_sender"
+# Environment="SEND_INTERVAL=1"
+# Environment="LOG_LEVEL=INFO"
+
+# Security (relaxed - sender needs access to home directory and Python libs)
+# Note: Cannot use ProtectHome=yes because WorkingDirectory is in /home/
+# Cannot use ProtectSystem=strict because needs to read Python libraries
+ProtectSystem=no
+ProtectHome=no
+PrivateTmp=yes
+
+# Allow access to required paths
+ReadWritePaths=/home/strato/stratonode/sender/
+ReadWritePaths=/home/strato/stratonode/venv/
+ReadOnlyPaths=/usr/lib/python3/
+
+# Resource limits
+LimitNOFILE=1024
+CPUQuota=50%
+MemoryMax=256M
+
+# Prevent sender from consuming too many resources
+# CPUQuota: Max 50% of one CPU core
+# MemoryMax: Max 256 MB RAM (sender should use ~10-20 MB normally)
+
+[Install]
+WantedBy=multi-user.target

@@ -1,0 +1,47 @@
+[Unit]
+Description=GNSS Combined Logger and Sender Service
+Documentation=https://github.com/stratocentral/stratocentral
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=root
+Group=root
+
+# Working directory (contains config.py, gnss_reader.py, .env)
+WorkingDirectory=/home/strato/stratonode/sender/
+
+# Command to run (script should be in working directory, not /usr/local/bin/)
+ExecStart=/home/strato/stratonode/venv/bin/python3 /home/strato/stratonode/sender/gnss_combined_service.py
+
+# Restart policy
+Restart=always
+RestartSec=10
+
+# Graceful shutdown
+KillMode=mixed
+KillSignal=SIGINT
+TimeoutStopSec=30
+
+# Logging
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=gnss-combined
+
+# Security (relaxed for serial port and file access)
+ProtectSystem=no
+ProtectHome=no
+PrivateTmp=yes
+
+# Allow access to serial device
+DeviceAllow=/dev/ttyAMA0 rw
+DevicePolicy=closed
+
+# Resource limits
+LimitNOFILE=1024
+CPUQuota=50%
+MemoryMax=256M
+
+[Install]
+WantedBy=multi-user.target

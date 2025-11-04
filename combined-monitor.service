@@ -1,0 +1,25 @@
+[Unit]
+Description=UBX Parser Health Monitor for Combined Service
+Documentation=file:///home/strato/stratonode/sender/UBX_DESYNC_FIX.md
+PartOf=combined.service
+After=combined.service
+
+[Service]
+Type=oneshot
+User=strato
+Group=strato
+WorkingDirectory=/home/strato/stratonode/sender
+
+# Run the monitoring script
+ExecStart=/home/strato/stratonode/sender/monitor_ubx_health.sh
+
+# Restart policy
+Restart=no
+
+# Logging
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=combined-monitor
+
+[Install]
+WantedBy=multi-user.target
