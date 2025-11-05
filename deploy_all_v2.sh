@@ -614,34 +614,27 @@ else
 STATION_ID=SN_XXX
 STATION_NAME=Ground Station Name
 
+# Central-ingest service URL (HTTPS via nginx reverse proxy)
+INGEST_URL=https://ingest.stratosentinel.com/api/v1/ingest
+
+# API key for authentication (must match central-ingest configuration)
+API_KEY=your_api_key_here
+
 # Known surveyed position (decimal degrees, meters)
-KNOWN_LATITUDE=0.0
-KNOWN_LONGITUDE=0.0
-KNOWN_ALTITUDE=0.0
+LATITUDE=0.0
+LONGITUDE=0.0
+ANTENNA_HEIGHT=0.0
 
-# Serial Port Configuration
-SERIAL_PORT=/dev/ttyAMA0
-SERIAL_BAUD=115200
+# Sender behavior
+SEND_INTERVAL=1
 
-# Central Server Configuration
-INGEST_URL=https://your-server.com/api/v1/ingest
+# Reference station
+IS_REFERENCE_STATION=true
 
-# Authentication (EACH STATION NEEDS ITS OWN UNIQUE API KEY!)
-# Generate a unique API key for this station on your central server
-API_KEY=your-unique-api-key-here
+# Live GNSS Device
+GNSS_DEVICE=/dev/ttyAMA0
+GNSS_BAUD_RATE=115200
 
-# Data Logging Configuration
-LOG_TO_FILE=true
-LOG_DIR=$GNSS_LOG_DIR
-
-# Network Configuration
-SEND_BATCH_SIZE=10
-SEND_INTERVAL_SECONDS=5
-MAX_RETRY_ATTEMPTS=3
-RETRY_BACKOFF_SECONDS=5
-
-# Logging
-LOG_LEVEL=INFO
 EOF
 
     chown "$ACTUAL_USER:$ACTUAL_USER" "$ENV_FILE"
