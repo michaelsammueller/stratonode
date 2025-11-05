@@ -67,6 +67,7 @@ echo "  • Install system packages"
 echo "  • Set up Tailscale VPN (optional)"
 echo "  • Create Python virtual environment"
 echo "  • Install Python dependencies"
+echo "  • Setup NVMe storage drive (if available)"
 echo "  • Create data directories on NVMe"
 echo "  • Configure file permissions"
 echo "  • Install systemd services"
@@ -85,7 +86,7 @@ echo
 # =============================================================================
 # STEP 1: System Package Installation
 # =============================================================================
-echo -e "${MAGENTA}[1/13] Installing system packages...${NC}"
+echo -e "${MAGENTA}[1/14] Installing system packages...${NC}"
 
 # Update package list
 echo "  Updating package lists..."
@@ -114,7 +115,7 @@ echo
 # =============================================================================
 # STEP 2: Tailscale VPN Setup (Optional)
 # =============================================================================
-echo -e "${MAGENTA}[2/13] Setting up Tailscale VPN...${NC}"
+echo -e "${MAGENTA}[2/14] Setting up Tailscale VPN...${NC}"
 
 echo -e "${YELLOW}Tailscale provides secure remote access to your ground stations.${NC}"
 echo "It creates a private mesh network between all your devices."
@@ -212,7 +213,7 @@ echo
 # =============================================================================
 # STEP 3: Verify Serial Port
 # =============================================================================
-echo -e "${MAGENTA}[3/13] Verifying serial port configuration...${NC}"
+echo -e "${MAGENTA}[3/14] Verifying serial port configuration...${NC}"
 
 SERIAL_PORT="/dev/ttyAMA0"
 
@@ -245,9 +246,9 @@ fi
 echo
 
 # =============================================================================
-# STEP 4: Create Directory Structure
+# STEP 4: Verify Directory Structure
 # =============================================================================
-echo -e "${MAGENTA}[4/13] Creating directory structure...${NC}"
+echo -e "${MAGENTA}[4/14] Verifying directory structure...${NC}"
 
 # Verify sender directory exists
 if [ ! -d "$SENDER_DIR" ]; then
@@ -268,25 +269,36 @@ fi
 # Ensure sender directory has correct ownership
 chown -R "$ACTUAL_USER:$ACTUAL_USER" "$SENDER_DIR"
 
-# Create GNSS data directory
-mkdir -p "$GNSS_LOG_DIR"
-chown -R "$ACTUAL_USER:$ACTUAL_USER" "$GNSS_LOG_DIR"
-chmod 755 "$GNSS_LOG_DIR"
-echo -e "  ✓ Created: $GNSS_LOG_DIR"
-
-# Create StratoCentral log directory
-mkdir -p "$STRATO_LOG_DIR"
-chown -R "$ACTUAL_USER:$ACTUAL_USER" "$STRATO_LOG_DIR"
-chmod 755 "$STRATO_LOG_DIR"
-echo -e "  ✓ Created: $STRATO_LOG_DIR"
-
-# Verify /data is on NVMe
-if mountpoint -q "$DATA_DIR"; then
-    MOUNT_INFO=$(df -h "$DATA_DIR" | tail -1 | awk '{print $1, $2}')
-    echo -e "  ✓ $DATA_DIR is a mountpoint: $MOUNT_INFO"
+# Verify GNSS data directory exists (should be created in NVMe step)
+if [ -d "$GNSS_LOG_DIR" ]; then
+    echo -e "  ✓ GNSS data directory exists: $GNSS_LOG_DIR"
+    chown -R "$ACTUAL_USER:$ACTUAL_USER" "$GNSS_LOG_DIR"
+    chmod 755 "$GNSS_LOG_DIR"
 else
-    echo -e "  ${YELLOW}⚠ Warning: $DATA_DIR is not a separate mountpoint${NC}"
-    echo "  Consider mounting your NVMe drive to $DATA_DIR for better performance"
+    echo -e "  ${YELLOW}⚠ Creating GNSS directory: $GNSS_LOG_DIR${NC}"
+    mkdir -p "$GNSS_LOG_DIR"
+    chown -R "$ACTUAL_USER:$ACTUAL_USER" "$GNSS_LOG_DIR"
+    chmod 755 "$GNSS_LOG_DIR"
+fi
+
+# Verify StratoCentral log directory exists (should be created in NVMe step)
+if [ -d "$STRATO_LOG_DIR" ]; then
+    echo -e "  ✓ StratoCentral log directory exists: $STRATO_LOG_DIR"
+    chown -R "$ACTUAL_USER:$ACTUAL_USER" "$STRATO_LOG_DIR"
+    chmod 755 "$STRATO_LOG_DIR"
+else
+    echo -e "  ${YELLOW}⚠ Creating StratoCentral directory: $STRATO_LOG_DIR${NC}"
+    mkdir -p "$STRATO_LOG_DIR"
+    chown -R "$ACTUAL_USER:$ACTUAL_USER" "$STRATO_LOG_DIR"
+    chmod 755 "$STRATO_LOG_DIR"
+fi
+
+# Display /data mount status
+if mountpoint -q "$DATA_DIR"; then
+    MOUNT_INFO=$(df -h "$DATA_DIR" | tail -1 | awk '{print $1, $2, $4}')
+    echo -e "  ✓ $DATA_DIR is mounted: $MOUNT_INFO"
+else
+    echo -e "  ${YELLOW}⚠ $DATA_DIR is on root filesystem (no NVMe)${NC}"
 fi
 
 echo
@@ -294,7 +306,7 @@ echo
 # =============================================================================
 # STEP 5: Python Virtual Environment
 # =============================================================================
-echo -e "${MAGENTA}[5/13] Setting up Python virtual environment...${NC}"
+echo -e "${MAGENTA}[5/14] Setting up Python virtual environment...${NC}"
 
 # Ensure stratonode directory has correct ownership before creating venv
 chown -R "$ACTUAL_USER:$ACTUAL_USER" "$STRATONODE_DIR"
@@ -330,7 +342,7 @@ echo
 # =============================================================================
 # STEP 6: Install Python Dependencies
 # =============================================================================
-echo -e "${MAGENTA}[6/13] Installing Python dependencies...${NC}"
+echo -e "${MAGENTA}[6/14] Installing Python dependencies...${NC}"
 
 if [ -f "$SENDER_DIR/requirements.txt" ]; then
     echo "  Installing from requirements.txt..."
@@ -347,9 +359,175 @@ fi
 echo
 
 # =============================================================================
-# STEP 7: Configure File Permissions
+# STEP 7: Setup NVMe Storage Drive
 # =============================================================================
-echo -e "${MAGENTA}[7/13] Configuring file permissions...${NC}"
+echo -e "${MAGENTA}[7/14] Setting up NVMe storage drive...${NC}"
+
+# Check if NVMe drive is present
+echo "  Checking for NVMe drive..."
+NVME_DEVICE="/dev/nvme0n1"
+NVME_PARTITION="/dev/nvme0n1p1"
+
+if lsblk | grep -q "nvme0n1"; then
+    echo -e "  ✓ NVMe drive detected: $NVME_DEVICE"
+    
+    # Check if already mounted on /data
+    if mount | grep -q "$NVME_PARTITION on /data"; then
+        echo -e "  ✓ NVMe already mounted on /data"
+        NVME_UUID=$(blkid -s UUID -o value $NVME_PARTITION 2>/dev/null)
+        echo "  UUID: $NVME_UUID"
+        
+        # Check if in fstab
+        if grep -q "$NVME_UUID" /etc/fstab 2>/dev/null || grep -q "$NVME_PARTITION" /etc/fstab 2>/dev/null; then
+            echo -e "  ✓ NVMe mount already in /etc/fstab"
+        else
+            echo -e "  ${YELLOW}⚠ NVMe mounted but not in /etc/fstab${NC}"
+            read -p "  Add to /etc/fstab for automatic mounting? (yes/no): " -r
+            if [[ $REPLY =~ ^[Yy]es$ ]]; then
+                echo "UUID=$NVME_UUID /data ext4 defaults,noatime 0 2" >> /etc/fstab
+                echo -e "  ✓ Added to /etc/fstab"
+            fi
+        fi
+    else
+        # Check if partition exists
+        if [ -b "$NVME_PARTITION" ]; then
+            echo -e "  ${YELLOW}⚠ NVMe partition exists but not mounted${NC}"
+            
+            # Check if it has a filesystem
+            if blkid $NVME_PARTITION &>/dev/null; then
+                echo "  Partition has a filesystem"
+                read -p "  Mount existing partition? (yes/no): " -r
+                if [[ $REPLY =~ ^[Yy]es$ ]]; then
+                    mkdir -p /data
+                    mount $NVME_PARTITION /data
+                    if [ $? -eq 0 ]; then
+                        echo -e "  ✓ Mounted $NVME_PARTITION on /data"
+                        
+                        # Add to fstab
+                        NVME_UUID=$(blkid -s UUID -o value $NVME_PARTITION)
+                        if ! grep -q "$NVME_UUID" /etc/fstab 2>/dev/null; then
+                            echo "UUID=$NVME_UUID /data ext4 defaults,noatime 0 2" >> /etc/fstab
+                            echo -e "  ✓ Added to /etc/fstab"
+                        fi
+                    else
+                        echo -e "  ${RED}✗ Failed to mount partition${NC}"
+                    fi
+                fi
+            else
+                echo -e "  ${RED}✗ Partition exists but has no filesystem${NC}"
+                echo "  Please manually prepare the partition"
+            fi
+        else
+            # No partition exists, offer to create
+            echo -e "  ${YELLOW}⚠ NVMe drive not partitioned${NC}"
+            echo
+            echo -e "  ${YELLOW}WARNING: This will CREATE A NEW PARTITION on $NVME_DEVICE${NC}"
+            echo -e "  ${RED}This will DESTROY ALL DATA on the drive!${NC}"
+            echo
+            read -p "  Create new partition and filesystem? (yes/no): " -r
+            
+            if [[ $REPLY =~ ^[Yy]es$ ]]; then
+                echo "  Creating partition..."
+                
+                # Use fdisk with automated commands
+                (echo g      # Create GPT partition table
+                 echo n      # New partition
+                 echo        # Default partition number (1)
+                 echo        # Default first sector
+                 echo        # Default last sector (use full disk)
+                 echo w      # Write changes
+                ) | fdisk $NVME_DEVICE &>/dev/null
+                
+                if [ $? -eq 0 ]; then
+                    echo -e "  ✓ Partition created"
+                    
+                    # Wait for partition to be recognized
+                    sleep 2
+                    partprobe $NVME_DEVICE 2>/dev/null
+                    
+                    # Create filesystem
+                    echo "  Creating ext4 filesystem..."
+                    mkfs.ext4 -F -L STRATODATA $NVME_PARTITION &>/dev/null
+                    
+                    if [ $? -eq 0 ]; then
+                        echo -e "  ✓ Filesystem created with label STRATODATA"
+                        
+                        # Create mount point and mount
+                        mkdir -p /data
+                        mount $NVME_PARTITION /data
+                        
+                        if [ $? -eq 0 ]; then
+                            echo -e "  ✓ Mounted $NVME_PARTITION on /data"
+                            
+                            # Get UUID and add to fstab
+                            NVME_UUID=$(blkid -s UUID -o value $NVME_PARTITION)
+                            echo "  UUID: $NVME_UUID"
+                            
+                            # Add to fstab if not already there
+                            if ! grep -q "$NVME_UUID" /etc/fstab 2>/dev/null; then
+                                echo "UUID=$NVME_UUID /data ext4 defaults,noatime 0 2" >> /etc/fstab
+                                echo -e "  ✓ Added to /etc/fstab for automatic mounting"
+                            fi
+                            
+                            # Verify mount
+                            df -h | grep "/data" | head -1
+                        else
+                            echo -e "  ${RED}✗ Failed to mount partition${NC}"
+                        fi
+                    else
+                        echo -e "  ${RED}✗ Failed to create filesystem${NC}"
+                    fi
+                else
+                    echo -e "  ${RED}✗ Failed to create partition${NC}"
+                    echo "  You may need to manually partition the drive"
+                fi
+            else
+                echo "  Skipping NVMe setup"
+                echo -e "  ${YELLOW}Note: System will use root filesystem for data storage${NC}"
+            fi
+        fi
+    fi
+else
+    echo -e "  ${YELLOW}⚠ No NVMe drive detected${NC}"
+    echo "  System will use root filesystem for data storage"
+    
+    # Create /data directory on root filesystem if it doesn't exist
+    if [ ! -d "/data" ]; then
+        mkdir -p /data
+        echo -e "  ✓ Created /data directory on root filesystem"
+    fi
+fi
+
+# Ensure data directories exist with correct permissions
+if [ -d "/data" ]; then
+    # Create GNSS directory
+    if [ ! -d "/data/gnss" ]; then
+        mkdir -p /data/gnss
+        echo -e "  ✓ Created /data/gnss directory"
+    fi
+    
+    # Create stratocentral logs directory
+    if [ ! -d "/data/stratocentral/logs" ]; then
+        mkdir -p /data/stratocentral/logs
+        echo -e "  ✓ Created /data/stratocentral/logs directory"
+    fi
+    
+    # Set ownership for all data directories
+    chown -R "$ACTUAL_USER:$ACTUAL_USER" /data
+    echo -e "  ✓ Set ownership of /data to $ACTUAL_USER:$ACTUAL_USER"
+    
+    # Display storage info
+    echo
+    echo "  Storage Configuration:"
+    df -h /data | tail -1 | awk '{printf "    Filesystem: %s\n    Size: %s, Used: %s, Available: %s\n", $1, $2, $3, $4}'
+fi
+
+echo
+
+# =============================================================================
+# STEP 8: Configure File Permissions
+# =============================================================================
+echo -e "${MAGENTA}[8/14] Configuring file permissions...${NC}"
 
 # Make Python scripts executable
 PYTHON_SCRIPTS=(
@@ -389,9 +567,9 @@ echo -e "  ✓ Ownership set to $ACTUAL_USER:$ACTUAL_USER"
 echo
 
 # =============================================================================
-# STEP 8: Verify Configuration File
+# STEP 9: Verify Configuration File
 # =============================================================================
-echo -e "${MAGENTA}[8/13] Verifying configuration file...${NC}"
+echo -e "${MAGENTA}[9/14] Verifying configuration file...${NC}"
 
 ENV_FILE="$SENDER_DIR/.env"
 
@@ -477,9 +655,9 @@ fi
 echo
 
 # =============================================================================
-# STEP 9: Install Combined Service
+# STEP 10: Install Combined Service
 # =============================================================================
-echo -e "${MAGENTA}[9/13] Installing combined service...${NC}"
+echo -e "${MAGENTA}[10/14] Installing combined service...${NC}"
 
 SERVICE_FILE="$SENDER_DIR/combined.service"
 
@@ -530,9 +708,9 @@ echo -e "  ✓ Systemd configuration reloaded"
 echo
 
 # =============================================================================
-# STEP 10: Install UBX Health Monitor
+# STEP 11: Install UBX Health Monitor
 # =============================================================================
-echo -e "${MAGENTA}[10/13] Installing UBX health monitor...${NC}"
+echo -e "${MAGENTA}[11/14] Installing UBX health monitor...${NC}"
 
 MONITOR_SERVICE="$SENDER_DIR/combined-monitor.service"
 MONITOR_TIMER="$SENDER_DIR/combined-monitor.timer"
@@ -577,9 +755,9 @@ fi
 echo
 
 # =============================================================================
-# STEP 11: Enable Services
+# STEP 12: Enable Services
 # =============================================================================
-echo -e "${MAGENTA}[11/13] Enabling services...${NC}"
+echo -e "${MAGENTA}[12/14] Enabling services...${NC}"
 
 # Enable combined service
 systemctl enable combined.service
@@ -596,9 +774,9 @@ fi
 echo
 
 # =============================================================================
-# STEP 12: Start Services
+# STEP 13: Start Services
 # =============================================================================
-echo -e "${MAGENTA}[12/13] Starting services...${NC}"
+echo -e "${MAGENTA}[13/14] Starting services...${NC}"
 
 read -p "Start services now? (yes/no): " -r
 echo
@@ -637,9 +815,9 @@ fi
 echo
 
 # =============================================================================
-# STEP 13: Verification
+# STEP 14: Verification
 # =============================================================================
-echo -e "${MAGENTA}[13/13] Running verification checks...${NC}"
+echo -e "${MAGENTA}[14/14] Running verification checks...${NC}"
 
 CHECKS_PASSED=0
 CHECKS_TOTAL=0
@@ -662,7 +840,19 @@ else
     echo -e "  ${RED}✗ Data directories missing${NC}"
 fi
 
-# Check 3: Service files
+# Check 3: NVMe storage
+((CHECKS_TOTAL++))
+if mountpoint -q "$DATA_DIR" && mount | grep -q "nvme0n1"; then
+    echo -e "  ✓ NVMe storage mounted on /data"
+    ((CHECKS_PASSED++))
+elif [ -d "$DATA_DIR" ]; then
+    echo -e "  ${YELLOW}⚠ Using root filesystem for /data (no NVMe)${NC}"
+    ((CHECKS_PASSED++))
+else
+    echo -e "  ${RED}✗ /data directory not available${NC}"
+fi
+
+# Check 4: Service files
 ((CHECKS_TOTAL++))
 if [ -f /etc/systemd/system/combined.service ]; then
     echo -e "  ✓ Combined service installed"
@@ -671,7 +861,7 @@ else
     echo -e "  ${RED}✗ Combined service not installed${NC}"
 fi
 
-# Check 4: Configuration file
+# Check 5: Configuration file
 ((CHECKS_TOTAL++))
 if [ -f "$ENV_FILE" ]; then
     echo -e "  ✓ Configuration file exists"
@@ -680,7 +870,7 @@ else
     echo -e "  ${RED}✗ Configuration file missing${NC}"
 fi
 
-# Check 5: Service enabled
+# Check 6: Service enabled
 ((CHECKS_TOTAL++))
 if systemctl is-enabled combined.service >/dev/null 2>&1; then
     echo -e "  ✓ Combined service enabled"
@@ -689,7 +879,7 @@ else
     echo -e "  ${YELLOW}⚠ Combined service not enabled${NC}"
 fi
 
-# Check 6: Monitor timer
+# Check 7: Monitor timer
 ((CHECKS_TOTAL++))
 if [ -f /etc/systemd/system/combined-monitor.timer ]; then
     if systemctl is-enabled combined-monitor.timer >/dev/null 2>&1; then
