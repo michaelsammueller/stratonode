@@ -63,7 +63,7 @@ class GNSSReader:
 
         # Safety limits
         self.max_nmea_line_length = 512  # Max NMEA sentence length
-        self.max_ubx_message_length = 2048  # Max UBX message length
+        self.max_ubx_message_length = 4096  # Max UBX message length (increased for receivers with many satellites)
 
         # Desync detection
         self.ubx_error_count = 0  # Track consecutive UBX errors
