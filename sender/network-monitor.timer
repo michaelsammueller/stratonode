@@ -1,0 +1,19 @@
+[Unit]
+Description=Network Monitor Timer (runs every minute)
+Documentation=https://github.com/stratocentral/stratocentral
+
+[Timer]
+# Run 1 minute after boot
+OnBootSec=1min
+
+# Run every minute
+OnUnitActiveSec=1min
+
+# High accuracy to ensure timely recovery
+AccuracySec=1s
+
+# Run even if previous run hasn't completed
+Persistent=false
+
+[Install]
+WantedBy=timers.target

@@ -72,6 +72,7 @@ echo "  • Create data directories on NVMe"
 echo "  • Configure file permissions"
 echo "  • Install systemd services"
 echo "  • Set up UBX health monitoring"
+echo "  • Set up network monitoring and service recovery"
 echo "  • Enable auto-start on boot"
 echo
 read -p "Continue with deployment? (yes/no): " -r
@@ -549,6 +550,7 @@ done
 SHELL_SCRIPTS=(
     "monitor_ubx_health.sh"
     "setup_monitor.sh"
+    "network_monitor.sh"
 )
 
 for script in "${SHELL_SCRIPTS[@]}"; do
@@ -748,9 +750,40 @@ fi
 echo
 
 # =============================================================================
-# STEP 12: Enable Services
+# STEP 12: Install Network Monitor
 # =============================================================================
-echo -e "${MAGENTA}[12/14] Enabling services...${NC}"
+echo -e "${MAGENTA}[12/15] Installing network monitor...${NC}"
+
+NETWORK_MONITOR_SCRIPT="$SENDER_DIR/network_monitor.sh"
+NETWORK_MONITOR_SERVICE="$SENDER_DIR/network-monitor.service"
+NETWORK_MONITOR_TIMER="$SENDER_DIR/network-monitor.timer"
+
+if [ ! -f "$NETWORK_MONITOR_SCRIPT" ] || [ ! -f "$NETWORK_MONITOR_SERVICE" ] || [ ! -f "$NETWORK_MONITOR_TIMER" ]; then
+    echo -e "  ${YELLOW}⚠ Network monitor files not found${NC}"
+    echo "  Skipping network monitor installation..."
+else
+    # Make script executable
+    chmod +x "$NETWORK_MONITOR_SCRIPT"
+    echo -e "  ✓ Network monitor script executable"
+
+    # Copy service and timer files
+    cp "$NETWORK_MONITOR_SERVICE" /etc/systemd/system/
+    cp "$NETWORK_MONITOR_TIMER" /etc/systemd/system/
+    chmod 644 /etc/systemd/system/network-monitor.service
+    chmod 644 /etc/systemd/system/network-monitor.timer
+    echo -e "  ✓ Network monitor service files installed"
+
+    # Reload systemd
+    systemctl daemon-reload
+    echo -e "  ✓ Network monitor configuration reloaded"
+fi
+
+echo
+
+# =============================================================================
+# STEP 13: Enable Services
+# =============================================================================
+echo -e "${MAGENTA}[13/15] Enabling services...${NC}"
 
 # Enable combined service
 systemctl enable combined.service
@@ -764,12 +797,20 @@ else
     echo -e "  ${YELLOW}⚠ Monitor timer not available${NC}"
 fi
 
+# Enable network monitor timer if it exists
+if [ -f /etc/systemd/system/network-monitor.timer ]; then
+    systemctl enable network-monitor.timer
+    echo -e "  ✓ Network monitor enabled (will start on boot)"
+else
+    echo -e "  ${YELLOW}⚠ Network monitor timer not available${NC}"
+fi
+
 echo
 
 # =============================================================================
-# STEP 13: Start Services
+# STEP 14: Start Services
 # =============================================================================
-echo -e "${MAGENTA}[13/14] Starting services...${NC}"
+echo -e "${MAGENTA}[14/15] Starting services...${NC}"
 
 read -p "Start services now? (yes/no): " -r
 echo
@@ -799,18 +840,32 @@ if [[ $REPLY =~ ^[Yy]es$ ]]; then
             echo -e "  ${YELLOW}⚠ Monitor timer not started${NC}"
         fi
     fi
+
+    # Start network monitor timer
+    if [ -f /etc/systemd/system/network-monitor.timer ]; then
+        echo "  Starting network monitor..."
+        systemctl start network-monitor.timer
+        sleep 1
+
+        if systemctl is-active network-monitor.timer >/dev/null 2>&1; then
+            echo -e "  ✓ Network monitor ${GREEN}started${NC}"
+        else
+            echo -e "  ${YELLOW}⚠ Network monitor timer not started${NC}"
+        fi
+    fi
 else
     echo "  Services not started. Start manually with:"
     echo "    sudo systemctl start combined"
     echo "    sudo systemctl start combined-monitor.timer"
+    echo "    sudo systemctl start network-monitor.timer"
 fi
 
 echo
 
 # =============================================================================
-# STEP 14: Verification
+# STEP 15: Verification
 # =============================================================================
-echo -e "${MAGENTA}[14/14] Running verification checks...${NC}"
+echo -e "${MAGENTA}[15/15] Running verification checks...${NC}"
 
 CHECKS_PASSED=0
 CHECKS_TOTAL=0
@@ -885,6 +940,19 @@ else
     echo -e "  ${YELLOW}⚠ UBX health monitor not installed${NC}"
 fi
 
+# Check 8: Network monitor timer
+((CHECKS_TOTAL++))
+if [ -f /etc/systemd/system/network-monitor.timer ]; then
+    if systemctl is-enabled network-monitor.timer >/dev/null 2>&1; then
+        echo -e "  ✓ Network monitor enabled"
+        ((CHECKS_PASSED++))
+    else
+        echo -e "  ${YELLOW}⚠ Network monitor installed but not enabled${NC}"
+    fi
+else
+    echo -e "  ${YELLOW}⚠ Network monitor not installed${NC}"
+fi
+
 echo
 echo -e "${BLUE}Verification: $CHECKS_PASSED/$CHECKS_TOTAL checks passed${NC}"
 echo
@@ -903,6 +971,7 @@ echo
 echo -e "${GREEN}Services Installed:${NC}"
 echo "  • combined.service          - Main GNSS collection service"
 echo "  • combined-monitor.timer    - UBX health monitoring"
+echo "  • network-monitor.timer     - Internet connectivity and service recovery"
 echo
 
 echo -e "${GREEN}Data Directories:${NC}"
@@ -945,6 +1014,7 @@ fi
 echo "$STEP_NUM. Check service status:"
 echo "   sudo systemctl status combined"
 echo "   sudo systemctl status combined-monitor.timer"
+echo "   sudo systemctl status network-monitor.timer"
 echo
 
 ((STEP_NUM++))

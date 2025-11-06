@@ -4,6 +4,13 @@ Documentation=https://github.com/stratocentral/stratocentral
 After=network-online.target
 Wants=network-online.target
 
+# Restart when network comes back online
+PartOf=network-online.target
+
+# More aggressive start limit to survive network disruptions
+StartLimitIntervalSec=300
+StartLimitBurst=10
+
 [Service]
 Type=simple
 User=root
@@ -15,14 +22,22 @@ WorkingDirectory=/home/strato/stratonode/sender/
 # Command to run (script should be in working directory, not /usr/local/bin/)
 ExecStart=/home/strato/stratonode/venv/bin/python3 /home/strato/stratonode/sender/gnss_combined_service.py
 
-# Restart policy
+# Restart policy - always restart, but wait longer between attempts
 Restart=always
-RestartSec=10
+RestartSec=30
+
+# Don't count exit status 143 (SIGTERM) against start limit
+# This prevents normal shutdowns from counting as failures
+RestartForceExitStatus=
 
 # Graceful shutdown
 KillMode=mixed
 KillSignal=SIGINT
 TimeoutStopSec=30
+
+# Startup timeout - allow up to 2 minutes for Python to initialize
+# This prevents startup hangs from causing repeated failures
+TimeoutStartSec=120
 
 # Logging
 StandardOutput=journal

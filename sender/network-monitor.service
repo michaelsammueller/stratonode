@@ -1,0 +1,24 @@
+[Unit]
+Description=Network Connectivity Monitor and Service Recovery
+Documentation=https://github.com/stratocentral/stratocentral
+After=network-online.target
+
+[Service]
+Type=oneshot
+User=root
+Group=root
+WorkingDirectory=/home/strato/stratonode/sender
+
+# Run the network monitoring script
+ExecStart=/home/strato/stratonode/sender/network_monitor.sh
+
+# Don't restart on failure - the timer will retry
+Restart=no
+
+# Logging
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=network-monitor
+
+[Install]
+WantedBy=multi-user.target
